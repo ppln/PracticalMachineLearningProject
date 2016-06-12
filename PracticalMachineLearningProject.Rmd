@@ -1,0 +1,118 @@
+---
+title: "Practical Machine Learning Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Description
+In this project, we are going to use data from accelerometers on the belt,
+forearm, arm, and dumbell of 6 participants. They were asked to perform
+barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har
+
+Our goal is to predict the manner in which they did the exercise. We will built our training model, and use our prediction model to predict 20 different test cases.
+
+The training data for this project comes from here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The testing data for this project comes from here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Exploring Dataset
+```{r results='hide'}
+if(!file.exists("pml-training.csv"))
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv")
+if(!file.exists("pml-testing.csv"))
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv")
+
+training <- read.csv("pml-training.csv", na.strings = c("NA", ""))
+testing <- read.csv("pml-testing.csv", na.strings = c("NA", ""))
+
+head(training)
+```
+
+## Data Cleaning
+```{r}
+naColumns <- function(x){
+        col_drops <- c()
+        for(i in 1:ncol(x)){
+                # if NA amount > 50% of total
+                if(length(which(is.na(x[, i]))) > nrow(x)/2)
+                    col_drops <- c(col_drops, colnames(x)[i])
+        }
+        col_drops
+}
+
+col_drops_training <- naColumns(training)
+col_drops_testing <- naColumns(testing)
+```
+
+Check if training and testing has same NA columns
+
+```{r}
+all(col_drops_training == col_drops_testing)
+```
+
+Drop NA columns and first 7 columns that are useless for predicting
+
+```{r}
+training <- training[, -which(names(training) %in% col_drops_training)]
+training <- training[, 8:ncol(training)]
+testing <- testing[, -which(names(testing) %in% col_drops_testing)]
+testing <- testing[, 8:(ncol(testing)-1)]
+dim(training)
+dim(testing)
+```
+
+## Training
+```{r warning=FALSE, message=FALSE}
+library(lattice)
+library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+```
+
+```{r}
+set.seed(123)
+inTrain <- createDataPartition(training$classe, p = 0.75, list = FALSE)
+myTraining <- training[inTrain, ]
+myTesting <- training[-inTrain, ]
+```
+
+
+Modeling via rpart and classification tree
+
+```{r fig.width= 10, fig.height= 12}
+fit <- rpart(classe ~ ., data = myTraining, method = "class")
+fancyRpartPlot(fit, cex = 0.75)
+pred_class <- predict(fit, myTesting, type = "class")
+confusionMatrix(pred_class, myTesting$classe)
+```
+
+The Accuracy is 0.74, it looks like not good enough to be acceptable.
+
+
+Modeling via Random forest, use cross validation
+
+```{r}
+fit_rf <- train(classe ~ ., data = myTraining, method = "rf", 
+                trControl = trainControl(method = "cv", number = 4))
+pred_rf <- predict(fit_rf, myTesting)
+confusionMatrix(pred_rf, myTesting$classe)
+```
+Random forest get better Accuracy: 0.99
+
+## Prediction
+Then use our Random forest prediction model to predict 20 different test cases
+```{r}
+prediction <- predict(fit_rf, testing)
+prediction
+```
+
